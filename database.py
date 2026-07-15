@@ -1,13 +1,18 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# SQLite 데이터베이스 경로 설정
-SQLALCHEMY_DATABASE_URL = "sqlite:///./localhub.db"
+load_dotenv()
+
+# 환경변수에서 DB 경로를 읽되, 없으면 로컬 파일 사용
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./localhub.db")
 
 # 엔진 생성
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {},
 )
 
 # 세션 생성기
