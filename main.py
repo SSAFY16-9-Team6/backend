@@ -38,6 +38,24 @@ def fail(message):
 def on_startup():
     database.Base.metadata.create_all(bind=database.engine)
 
+SIGNGU_NAMES = {
+    "110": "중구",
+    "140": "서구",
+    "170": "동구",
+    "200": "영도구",
+    "230": "부산진구",
+    "260": "동래구",
+    "290": "남구",
+    "320": "북구",
+    "350": "해운대구",
+    "380": "사하구",
+}
+@app.get(API_PREFIX + "/regions/{code}")
+def get_region_name(code: str):
+    name = SIGNGU_NAMES.get(code)
+    if not name:
+        raise HTTPException(status_code=404, detail="등록되지 않은 지역 코드입니다.")
+    return success({"code": code, "name": name})
 
 @app.get(API_PREFIX + "/categories")
 def list_categories(db: Session = Depends(get_db)):
@@ -102,6 +120,21 @@ def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
         "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
         "content": p.content, "author": p.author, "createdAt": p.createdAt, 
         "likeCount": p.likeCount, "viewCount": p.viewCount
+    })
+
+@app.get(API_PREFIX + "/categories/posts")
+def list_posts(page: int = 1, size: int = 20, db: Session = Depends(get_db)):
+    skip = (page - 1) * size
+    total, items = crud.list_posts(db, skip, size)
+    def post_to_dict(p):
+        return {
+            "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
+            "content": p.content, "author": p.author, "createdAt": p.createdAt, 
+            "likeCount": p.likeCount, "viewCount": p.viewCount
+        }
+    return success({
+        "items": [post_to_dict(i) for i in items], 
+        "totalCount": total
     })
 
 @app.get(API_PREFIX + "/categories/{categoryId}/posts")

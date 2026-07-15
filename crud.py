@@ -50,6 +50,12 @@ def create_post(db: Session, post_data: dict) -> models.Post:
     db.refresh(p)
     return p
 
+def list_posts(db: Session, skip: int = 0, limit: int = 20) -> Tuple[int, List[models.Post]]:
+    q = db.query(models.Post).order_by(models.Post.createdAt.desc())
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return total, items
+
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     return db.query(models.Post).filter(models.Post.postId == post_id).first()
 
