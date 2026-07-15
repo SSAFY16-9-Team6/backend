@@ -50,12 +50,32 @@ SIGNGU_NAMES = {
     "350": "해운대구",
     "380": "사하구",
 }
+
 @app.get(API_PREFIX + "/regions/{code}")
-def get_region_name(code: str):
+def get_region_places(code: str, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     name = SIGNGU_NAMES.get(code)
     if not name:
         raise HTTPException(status_code=404, detail="등록되지 않은 지역 코드입니다.")
-    return success({"code": code, "name": name})
+
+    skip = (page - 1) * size
+    total, items = crud.places_by_region(db, code, skip, size)
+    pagination = {"page": page, "size": size, "totalPages": (total + size - 1) // size, "hasNext": (page * size) < total, "hasPrevious": page > 1}
+
+    def place_to_dict(p):
+        return {
+            "contentId": p.contentId, "categoryId": p.categoryId, "title": p.title, 
+            "address": p.address, "thumbnail": p.thumbnail, 
+            "mapX": p.mapX, "mapY": p.mapY, 
+            "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
+        }
+
+    return success({
+        "regionCode": code,
+        "regionName": name,
+        "totalCount": total,
+        "items": [place_to_dict(i) for i in items],
+        "pagination": pagination
+    })
 
 @app.get(API_PREFIX + "/categories")
 def list_categories(db: Session = Depends(get_db)):
@@ -122,7 +142,7 @@ def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
         "likeCount": p.likeCount, "viewCount": p.viewCount
     })
 
-@app.get(API_PREFIX + "/categories/posts")
+@app.get(API_PREFIX + "/posts")
 def list_posts(page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     skip = (page - 1) * size
     total, items = crud.list_posts(db, skip, size)

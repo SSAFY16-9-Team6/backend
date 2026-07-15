@@ -9,6 +9,12 @@ def list_categories(db: Session) -> List[models.Category]:
 def get_places(db: Session, skip: int = 0, limit: int = 100) -> List[models.Place]:
     return db.query(models.Place).offset(skip).limit(limit).all()
 
+def places_by_region(db: Session, signgu_code: str, skip: int = 0, limit: int = 20) -> Tuple[int, List[models.Place]]:
+    q = db.query(models.Place).filter(models.Place.lDongSignguCd == signgu_code)
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return total, items
+
 def places_by_category(db: Session, category_id: int, skip: int = 0, limit: int = 20, keyword: Optional[str] = None) -> Tuple[int, List[models.Place]]:
     category = db.query(models.Category).filter(models.Category.categoryId == category_id).first()
     q = db.query(models.Place).filter(models.Place.categoryId == category_id)
