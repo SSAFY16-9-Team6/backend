@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from backend import models
+import models
 
 def list_categories(db: Session) -> List[models.Category]:
     return db.query(models.Category).all()
@@ -10,13 +10,14 @@ def get_places(db: Session, skip: int = 0, limit: int = 100) -> List[models.Plac
     return db.query(models.Place).offset(skip).limit(limit).all()
 
 def places_by_category(db: Session, category_id: int, skip: int = 0, limit: int = 20, keyword: Optional[str] = None) -> Tuple[int, List[models.Place]]:
+    category = db.query(models.Category).filter(models.Category.categoryId == category_id).first()
     q = db.query(models.Place).filter(models.Place.categoryId == category_id)
     if keyword:
         like = f"%{keyword}%"
         q = q.filter(models.Place.title.ilike(like) | models.Place.address.ilike(like))
     total = q.count()
     items = q.offset(skip).limit(limit).all()
-    return total, items
+    return total, items, category.name
 
 def get_place(db: Session, content_id: str) -> Optional[models.Place]:
     return db.query(models.Place).filter(models.Place.contentId == content_id).first()

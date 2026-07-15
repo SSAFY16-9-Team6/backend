@@ -1,10 +1,11 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, Request
+import openai
+from fastapi import FastAPI, Depends, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
-from backend import database, crud, schemas
+import models, database, crud, schemas
 
 load_dotenv()
 
@@ -14,7 +15,7 @@ app = FastAPI(title="LocalHub API")
 FRONT = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONT],
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,7 +34,6 @@ def success(data):
 def fail(message):
     return {"success": False, "message": message}
 
-
 @app.on_event("startup")
 def on_startup():
     database.Base.metadata.create_all(bind=database.engine)
@@ -48,45 +48,79 @@ def list_categories(db: Session = Depends(get_db)):
 @app.get(API_PREFIX + "/categories/{categoryId}/places")
 def places_by_category(categoryId: int, page: int = 1, size: int = 20, keyword: str = None, db: Session = Depends(get_db)):
     skip = (page - 1) * size
-    total, items = crud.places_by_category(db, categoryId, skip, size, keyword)
+    total, items, name = crud.places_by_category(db, categoryId, skip, size, keyword)
     pagination = {"page": page, "size": size, "totalPages": (total + size - 1) // size, "hasNext": (page * size) < total, "hasPrevious": page > 1}
-    # convert ORM objects to dicts safely
-    def to_dict(p):
-        return {"contentId": p.contentId, "title": p.title, "thumbnail": p.thumbnail, "address": p.address, "mapX": p.mapX, "mapY": p.mapY}
-    return success({"categoryId": categoryId, "categoryName": None, "totalCount": total, "items": [to_dict(i) for i in items], "pagination": pagination})
+    
+    def place_to_dict(p):
+        return {
+            "contentId": p.contentId, "categoryId": p.categoryId, "title": p.title, 
+            "address": p.address, "thumbnail": p.thumbnail, 
+            "mapX": p.mapX, "mapY": p.mapY, 
+            "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
+        }
+        
+    return success({
+        "categoryId": categoryId, 
+        "categoryName": name, 
+        "totalCount": total, 
+        "items": [place_to_dict(i) for i in items], 
+        "pagination": pagination
+    })
 
+@app.get(API_PREFIX + "/places/search")
+def place_search(keyword: str = None, categoryId: int = None, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
+    skip = (page - 1) * size
+    total, items = crud.search_places(db, keyword, categoryId, skip, size)
+    def place_to_dict(p):
+        return {
+            "contentId": p.contentId, "categoryId": p.categoryId, "title": p.title, 
+            "address": p.address, "thumbnail": p.thumbnail, 
+            "mapX": p.mapX, "mapY": p.mapY, 
+            "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
+        }
+    return success({
+        "totalCount": total, 
+        "items": [place_to_dict(i) for i in items]
+    })
 
 @app.get(API_PREFIX + "/places/{contentId}")
 def place_detail(contentId: str, db: Session = Depends(get_db)):
     p = crud.get_place(db, contentId)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    data = {"contentId": p.contentId, "title": p.title, "address": p.address, "tel": getattr(p, 'tel', None), "thumbnail": p.thumbnail, "mapX": p.mapX, "mapY": p.mapY}
-    return success(data)
+    return success({
+        "contentId": p.contentId, "categoryId": p.categoryId, "title": p.title, 
+        "address": p.address, "thumbnail": p.thumbnail, 
+        "mapX": p.mapX, "mapY": p.mapY, 
+        "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
+    })
 
-
-@app.get(API_PREFIX + "/places/search")
-def place_search(keyword: str = None, categoryId: int = None, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
-    skip = (page - 1) * size
-    total, items = crud.search_places(db, keyword, categoryId, skip, size)
-    def to_dict(p):
-        return {"contentId": p.contentId, "title": p.title, "thumbnail": p.thumbnail, "address": p.address, "mapX": p.mapX, "mapY": p.mapY}
-    return success({"totalCount": total, "items": [to_dict(i) for i in items]})
 
 
 @app.get(API_PREFIX + "/categories/{categoryId}/posts")
 def category_posts(categoryId: int, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     skip = (page - 1) * size
     total, items = crud.posts_by_category(db, categoryId, skip, size)
-    def to_dict(p):
-        return {"postId": p.postId, "title": p.title, "content": p.content, "author": p.author, "createdAt": p.createdAt, "likeCount": p.likeCount}
-    return success({"items": [to_dict(i) for i in items], "totalCount": total})
+    def post_to_dict(p):
+        return {
+            "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
+            "content": p.content, "author": p.author, "createdAt": p.createdAt, 
+            "likeCount": p.likeCount, "viewCount": p.viewCount
+        }
+    return success({
+        "items": [post_to_dict(i) for i in items], 
+        "totalCount": total
+    })
 
 
 @app.post(API_PREFIX + "/posts")
 def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
     p = crud.create_post(db, post.dict())
-    return success(p)
+    return success({
+        "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
+        "content": p.content, "author": p.author, "createdAt": p.createdAt, 
+        "likeCount": p.likeCount, "viewCount": p.viewCount
+    })
 
 
 @app.get(API_PREFIX + "/posts/{postId}")
@@ -95,7 +129,11 @@ def get_post(postId: int, db: Session = Depends(get_db)):
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     p = crud.incr_view(db, p)
-    return success(p)
+    return success({
+        "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
+        "content": p.content, "author": p.author, "createdAt": p.createdAt, 
+        "likeCount": p.likeCount, "viewCount": p.viewCount
+    })
 
 
 @app.put(API_PREFIX + "/posts/{postId}")
@@ -104,19 +142,23 @@ def put_post(postId: int, post: schemas.PostCreate, db: Session = Depends(get_db
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     if p.password != post.password:
-        raise HTTPException(status_code=403, detail="Password mismatch")
+        return fail("비밀번호가 일치하지 않습니다.")
     updated = crud.update_post(db, p, post.dict(exclude_unset=True))
-    return success(updated)
+    return success({
+        "postId": updated.postId, "categoryId": updated.categoryId, "title": updated.title, 
+        "content": updated.content, "author": updated.author, "createdAt": updated.createdAt, 
+        "likeCount": updated.likeCount, "viewCount": updated.viewCount
+    })
 
 
 @app.delete(API_PREFIX + "/posts/{postId}")
-def delete_post(postId: int, body: dict, db: Session = Depends(get_db)):
+def delete_post(postId: int, body: dict = Body(...), db: Session = Depends(get_db)):
     password = body.get("password")
     p = crud.get_post(db, postId)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     if p.password != password:
-        raise HTTPException(status_code=403, detail="Password mismatch")
+        return fail("비밀번호가 일치하지 않습니다.")
     crud.delete_post(db, p)
     return success({"ok": True})
 
@@ -131,22 +173,44 @@ def like_post(postId: int, request: Request, db: Session = Depends(get_db)):
     return success({"liked": liked, "likeCount": like_count})
 
 
-# Chatbot endpoint
-import openai
+# ----------------------------------------
+# 챗봇 엔드포인트
+# ----------------------------------------
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_KEY:
     openai.api_key = OPENAI_KEY
 
-
 @app.post(API_PREFIX + "/chatbot/message")
 def chatbot(req: schemas.ChatRequest, db: Session = Depends(get_db)):
     user_msg = req.message
-    reply = "챗봇이 준비중입니다."
+    reply = "챗봇 API 키가 설정되지 않았습니다."
+    
     if OPENAI_KEY:
         try:
-            resp = openai.ChatCompletion.create(model="gpt-4o-mini", messages=[{"role": "user", "content": user_msg}], max_tokens=300)
+            _, places = crud.search_places(db, keyword=user_msg, limit=3)
+            context = "\n".join([f"- {p.title} (주소: {p.address})" for p in places])
+            
+            system_prompt = (
+                "당신은 부산 관광 전문가입니다. 아래 [데이터]를 바탕으로 친절하게 답변하세요.\n"
+                f"[데이터]\n{context}"
+            )
+            
+            resp = openai.ChatCompletion.create(
+                model="gpt-4o-mini", 
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg}
+                ], 
+                max_tokens=300
+            )
             reply = resp.choices[0].message.content
-        except Exception:
-            reply = "챗봇 호출 중 오류가 발생했습니다."
+        except Exception as e:
+            reply = f"챗봇 오류 발생: {str(e)}"
+            
     crud.log_chat(db, user_msg, reply)
     return success({"reply": reply})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
