@@ -54,10 +54,7 @@ def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     return db.query(models.Post).filter(models.Post.postId == post_id).first()
 
 def incr_view(db: Session, post: models.Post) -> models.Post:
-    post.likeCount = post.likeCount or 0
-    # view_count column may not exist in current model; use attribute if present
-    if hasattr(post, 'view_count'):
-        post.view_count = (post.view_count or 0) + 1
+    post.viewCount = (post.viewCount or 0) + 1
     db.commit()
     db.refresh(post)
     return post

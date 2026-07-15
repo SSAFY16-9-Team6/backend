@@ -95,7 +95,14 @@ def place_detail(contentId: str, db: Session = Depends(get_db)):
         "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
     })
 
-
+@app.post(API_PREFIX + "/posts")
+def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
+    p = crud.create_post(db, post.dict())
+    return success({
+        "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
+        "content": p.content, "author": p.author, "createdAt": p.createdAt, 
+        "likeCount": p.likeCount, "viewCount": p.viewCount
+    })
 
 @app.get(API_PREFIX + "/categories/{categoryId}/posts")
 def category_posts(categoryId: int, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
@@ -110,16 +117,6 @@ def category_posts(categoryId: int, page: int = 1, size: int = 20, db: Session =
     return success({
         "items": [post_to_dict(i) for i in items], 
         "totalCount": total
-    })
-
-
-@app.post(API_PREFIX + "/posts")
-def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
-    p = crud.create_post(db, post.dict())
-    return success({
-        "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
-        "content": p.content, "author": p.author, "createdAt": p.createdAt, 
-        "likeCount": p.likeCount, "viewCount": p.viewCount
     })
 
 
@@ -176,16 +173,17 @@ def like_post(postId: int, request: Request, db: Session = Depends(get_db)):
 # ----------------------------------------
 # 챗봇 엔드포인트
 # ----------------------------------------
+from openai import OpenAI
+
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-if OPENAI_KEY:
-    openai.api_key = OPENAI_KEY
+client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
 
 @app.post(API_PREFIX + "/chatbot/message")
 def chatbot(req: schemas.ChatRequest, db: Session = Depends(get_db)):
     user_msg = req.message
     reply = "챗봇 API 키가 설정되지 않았습니다."
     
-    if OPENAI_KEY:
+    if client:
         try:
             _, places = crud.search_places(db, keyword=user_msg, limit=3)
             context = "\n".join([f"- {p.title} (주소: {p.address})" for p in places])
@@ -195,13 +193,13 @@ def chatbot(req: schemas.ChatRequest, db: Session = Depends(get_db)):
                 f"[데이터]\n{context}"
             )
             
-            resp = openai.ChatCompletion.create(
-                model="gpt-4o-mini", 
+            resp = client.chat.completions.create(
+                model="gpt-5-mini", 
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg}
                 ], 
-                max_tokens=300
+                max_completion_tokens=3000
             )
             reply = resp.choices[0].message.content
         except Exception as e:
