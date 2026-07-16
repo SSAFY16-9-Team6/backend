@@ -27,6 +27,11 @@ class PostCreate(BaseModel):
     password: str
     author: Optional[str] = "익명"
 
+class PostUpdate(BaseModel):
+    categoryId: Optional[int] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+
 class PostOut(BaseModel):
     postId: int
     categoryId: Optional[int]

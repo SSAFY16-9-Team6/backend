@@ -62,6 +62,12 @@ def list_posts(db: Session, skip: int = 0, limit: int = 20) -> Tuple[int, List[m
     items = q.offset(skip).limit(limit).all()
     return total, items
 
+def search_posts(db: Session, keyword: str, skip: int = 0, limit: int = 20) -> Tuple[int, List[models.Post]]:
+    q = db.query(models.Post).filter(models.Post.title.ilike(f"%{keyword}%")).order_by(models.Post.createdAt.desc())
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return total, items
+
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     return db.query(models.Post).filter(models.Post.postId == post_id).first()
 
@@ -70,6 +76,10 @@ def incr_view(db: Session, post: models.Post) -> models.Post:
     db.commit()
     db.refresh(post)
     return post
+
+def post_counts_by_category(db: Session):
+    rows = db.query(models.Post.categoryId, func.count(models.Post.postId)).group_by(models.Post.categoryId).all()
+    return [{"categoryId": cat_id, "total": count} for cat_id, count in rows]
 
 def update_post(db: Session, post: models.Post, updates: dict) -> models.Post:
     for k, v in updates.items():

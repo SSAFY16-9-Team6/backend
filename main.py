@@ -51,6 +51,7 @@ SIGNGU_NAMES = {
     "380": "사하구",
 }
 
+#지역코드로 관광지 조회
 @app.get(API_PREFIX + "/regions/{code}")
 def get_region_places(code: str, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     name = SIGNGU_NAMES.get(code)
@@ -77,12 +78,13 @@ def get_region_places(code: str, page: int = 1, size: int = 20, db: Session = De
         "pagination": pagination
     })
 
+
 @app.get(API_PREFIX + "/categories")
 def list_categories(db: Session = Depends(get_db)):
     cats = crud.list_categories(db)
     return success([{"categoryId": c.categoryId, "name": c.name} for c in cats])
 
-
+#카테고리로 관광지 조회
 @app.get(API_PREFIX + "/categories/{categoryId}/places")
 def places_by_category(categoryId: int, page: int = 1, size: int = 20, keyword: str = None, db: Session = Depends(get_db)):
     skip = (page - 1) * size
@@ -105,6 +107,7 @@ def places_by_category(categoryId: int, page: int = 1, size: int = 20, keyword: 
         "pagination": pagination
     })
 
+#장소 검색
 @app.get(API_PREFIX + "/places/search")
 def place_search(keyword: str = None, categoryId: int = None, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     skip = (page - 1) * size
@@ -121,6 +124,7 @@ def place_search(keyword: str = None, categoryId: int = None, page: int = 1, siz
         "items": [place_to_dict(i) for i in items]
     })
 
+#컨텐츠로 장소 검색
 @app.get(API_PREFIX + "/places/{contentId}")
 def place_detail(contentId: str, db: Session = Depends(get_db)):
     p = crud.get_place(db, contentId)
@@ -133,8 +137,12 @@ def place_detail(contentId: str, db: Session = Depends(get_db)):
         "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
     })
 
+#게시물 생성
 @app.post(API_PREFIX + "/posts")
 def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
+    category = db.query(models.Category).filter(models.Category.categoryId == post.categoryId).first()
+    if not category:
+        return fail("존재하지 않는 카테고리입니다.")
     p = crud.create_post(db, post.dict())
     return success({
         "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
@@ -142,6 +150,7 @@ def create_post(post: schemas.PostCreate, db: Session = Depends(get_db)):
         "likeCount": p.likeCount, "viewCount": p.viewCount
     })
 
+#게시물 조회
 @app.get(API_PREFIX + "/posts")
 def list_posts(page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     skip = (page - 1) * size
@@ -157,10 +166,13 @@ def list_posts(page: int = 1, size: int = 20, db: Session = Depends(get_db)):
         "totalCount": total
     })
 
+#카테고리별 게시물 조회
 @app.get(API_PREFIX + "/categories/{categoryId}/posts")
 def category_posts(categoryId: int, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
     skip = (page - 1) * size
     total, items = crud.posts_by_category(db, categoryId, skip, size)
+    pagination = {"page": page, "size": size, "totalPages": (total + size - 1) // size, "hasNext": (page * size) < total, "hasPrevious": page > 1}
+
     def post_to_dict(p):
         return {
             "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
@@ -169,9 +181,27 @@ def category_posts(categoryId: int, page: int = 1, size: int = 20, db: Session =
         }
     return success({
         "items": [post_to_dict(i) for i in items], 
-        "totalCount": total
+        "totalCount": total,
+        "pagination": pagination
     })
 
+@app.get(API_PREFIX + "/posts/search")
+def search_posts(keyword: str, page: int = 1, size: int = 20, db: Session = Depends(get_db)):
+    skip = (page - 1) * size
+    total, items = crud.search_posts(db, keyword, skip, size)
+    pagination = {"page": page, "size": size, "totalPages": (total + size - 1) // size, "hasNext": (page * size) < total, "hasPrevious": page > 1}
+
+    def post_to_dict(p):
+        return {
+            "postId": p.postId, "categoryId": p.categoryId, "title": p.title, 
+            "content": p.content, "author": p.author, "createdAt": p.createdAt, 
+            "likeCount": p.likeCount, "viewCount": p.viewCount
+        }
+    return success({
+        "totalCount": total,
+        "items": [post_to_dict(i) for i in items],
+        "pagination": pagination
+    })
 
 @app.get(API_PREFIX + "/posts/{postId}")
 def get_post(postId: int, db: Session = Depends(get_db)):
@@ -186,13 +216,22 @@ def get_post(postId: int, db: Session = Depends(get_db)):
     })
 
 
-@app.put(API_PREFIX + "/posts/{postId}")
-def put_post(postId: int, post: schemas.PostCreate, db: Session = Depends(get_db)):
+@app.post(API_PREFIX + "/posts/{postId}/verify-password")
+def verify_password(postId: int, body: dict = Body(...), db: Session = Depends(get_db)):
+    password = body.get("password")
     p = crud.get_post(db, postId)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    if p.password != post.password:
+    if p.password != password:
         return fail("비밀번호가 일치하지 않습니다.")
+    return success({"verified": True})
+
+
+@app.put(API_PREFIX + "/posts/{postId}")
+def put_post(postId: int, post: schemas.PostUpdate, db: Session = Depends(get_db)):
+    p = crud.get_post(db, postId)
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
     updated = crud.update_post(db, p, post.dict(exclude_unset=True))
     return success({
         "postId": updated.postId, "categoryId": updated.categoryId, "title": updated.title, 
@@ -202,13 +241,10 @@ def put_post(postId: int, post: schemas.PostCreate, db: Session = Depends(get_db
 
 
 @app.delete(API_PREFIX + "/posts/{postId}")
-def delete_post(postId: int, body: dict = Body(...), db: Session = Depends(get_db)):
-    password = body.get("password")
+def delete_post(postId: int, db: Session = Depends(get_db)):
     p = crud.get_post(db, postId)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    if p.password != password:
-        return fail("비밀번호가 일치하지 않습니다.")
     crud.delete_post(db, p)
     return success({"ok": True})
 
@@ -222,6 +258,9 @@ def like_post(postId: int, request: Request, db: Session = Depends(get_db)):
     liked, like_count = crud.add_like(db, p, user_key)
     return success({"liked": liked, "likeCount": like_count})
 
+@app.get(API_PREFIX + "/stats/posts-by-category")
+def posts_stats(db: Session = Depends(get_db)):
+    return success(crud.post_counts_by_category(db))
 
 # ----------------------------------------
 # 챗봇 엔드포인트
