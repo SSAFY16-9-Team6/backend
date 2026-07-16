@@ -20,6 +20,20 @@ CONTENT_TYPE_NAMES = {
     39: "음식점",
 }
 
+SEED_POSTS = [
+    {"postId": 1, "categoryId": 12, "title": "이재용의 부산 여행 첫 방문 후기", "content": "안녕하세요, 삼성전자 이재용입니다. 유엔기념공원 다녀왔는데 정말 좋았어요. 다음엔 감천문화마을도 가보려구요.", "author": "익명", "password": "1696"},
+    {"postId": 2, "categoryId": 28, "title": "강대범의 해운대 서핑 추천!", "content": "안녕하세요, 삼성전자 강대범입니다. 레포츠 즐기시는 분들 해운대 서핑 강습 한번 받아보세요.", "author": "익명", "password": "1696"},
+    {"postId": 3, "categoryId": 39, "title": "거대 강사 김태희의 부산 밀면 맛집 공유", "content": "여러분~ 남포동 근처 밀면집 정말 맛있었습니다.", "author": "익명", "password": "1696"},
+    {"postId": 4, "categoryId": 12, "title": "거대 프로 강혜빈의 감천문화마을 사진 명소", "content": "여러분~ 포토스팟 정리해봤어요. 아침 일찍 가시는 걸 추천!", "author": "익명", "password": "1696"},
+    {"postId": 5, "categoryId": 32, "title": "거제 야호 미아미의 해운대 근처 숙소 후기", "content": "내가 추천한 가성비 좋은 숙소 예약할때까지 파라파라나 춰야지", "author": "익명", "password": "1696"},
+]
+
+def ensure_seed_posts(session):
+    for data in SEED_POSTS:
+        existing = session.query(models.Post).filter(models.Post.postId == data["postId"]).first()
+        if not existing:
+            session.add(models.Post(**data))
+    session.commit()
 def ensure_categories(session):
     for cat_id, name in CONTENT_TYPE_NAMES.items():
         existing = session.query(models.Category).filter(models.Category.categoryId == cat_id).first()
@@ -65,6 +79,7 @@ def load_places(json_path: str):
 def load_all(folder: str):
     session = SessionLocal()
     ensure_categories(session)
+    ensure_seed_posts(session)
     session.close()
 
     json_files = sorted(glob.glob(os.path.join(folder, "*.json")))

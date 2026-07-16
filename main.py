@@ -229,6 +229,8 @@ def verify_password(postId: int, body: dict = Body(...), db: Session = Depends(g
 
 @app.put(API_PREFIX + "/posts/{postId}")
 def put_post(postId: int, post: schemas.PostUpdate, db: Session = Depends(get_db)):
+    if postId in SEED_POST_IDS:
+        return fail("시연용 게시글은 수정할 수 없습니다.")
     p = crud.get_post(db, postId)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
@@ -239,9 +241,11 @@ def put_post(postId: int, post: schemas.PostUpdate, db: Session = Depends(get_db
         "likeCount": updated.likeCount, "viewCount": updated.viewCount
     })
 
-
+SEED_POST_IDS = {1, 2, 3, 4, 5}
 @app.delete(API_PREFIX + "/posts/{postId}")
 def delete_post(postId: int, db: Session = Depends(get_db)):
+    if postId in SEED_POST_IDS:
+        return fail("시연용 게시글은 삭제할 수 없습니다.")
     p = crud.get_post(db, postId)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
