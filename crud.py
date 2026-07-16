@@ -15,12 +15,18 @@ def places_by_region(db: Session, signgu_code: str, skip: int = 0, limit: int = 
     items = q.offset(skip).limit(limit).all()
     return total, items
 
-def places_by_category(db: Session, category_id: int, skip: int = 0, limit: int = 20, keyword: Optional[str] = None) -> Tuple[int, List[models.Place]]:
+def places_by_category(db: Session, category_id: int, skip: int = 0, limit: int = 20, keyword: Optional[str] = None, region_code: Optional[str] = None):
     category = db.query(models.Category).filter(models.Category.categoryId == category_id).first()
+    if not category:
+        return 0, [], None
+
     q = db.query(models.Place).filter(models.Place.categoryId == category_id)
     if keyword:
         like = f"%{keyword}%"
         q = q.filter(models.Place.title.ilike(like) | models.Place.address.ilike(like))
+    if region_code:
+        q = q.filter(models.Place.lDongSignguCd == region_code)
+
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return total, items, category.name

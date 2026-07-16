@@ -84,13 +84,19 @@ def list_categories(db: Session = Depends(get_db)):
     cats = crud.list_categories(db)
     return success([{"categoryId": c.categoryId, "name": c.name} for c in cats])
 
-#카테고리로 관광지 조회
+#카테고리로 관광지 조회 (Keyword, RegionCode 옵션 가능)
 @app.get(API_PREFIX + "/categories/{categoryId}/places")
-def places_by_category(categoryId: int, page: int = 1, size: int = 20, keyword: str = None, db: Session = Depends(get_db)):
+def places_by_category(categoryId: int, page: int = 1, size: int = 20, keyword: str = None, regionCode: str = None, db: Session = Depends(get_db)):
+    if regionCode and regionCode not in SIGNGU_NAMES:
+        raise HTTPException(status_code=404, detail="등록되지 않은 지역 코드입니다.")
+
     skip = (page - 1) * size
-    total, items, name = crud.places_by_category(db, categoryId, skip, size, keyword)
+    total, items, name = crud.places_by_category(db, categoryId, skip, size, keyword, regionCode)
+    if name is None:
+        raise HTTPException(status_code=404, detail="존재하지 않는 카테고리입니다.")
+
     pagination = {"page": page, "size": size, "totalPages": (total + size - 1) // size, "hasNext": (page * size) < total, "hasPrevious": page > 1}
-    
+
     def place_to_dict(p):
         return {
             "contentId": p.contentId, "categoryId": p.categoryId, "title": p.title, 
@@ -98,10 +104,12 @@ def places_by_category(categoryId: int, page: int = 1, size: int = 20, keyword: 
             "mapX": p.mapX, "mapY": p.mapY, 
             "lDongRegnCd": p.lDongRegnCd, "lDongSignguCd": p.lDongSignguCd
         }
-        
+
     return success({
         "categoryId": categoryId, 
         "categoryName": name, 
+        "regionCode": regionCode,
+        "regionName": SIGNGU_NAMES.get(regionCode) if regionCode else None,
         "totalCount": total, 
         "items": [place_to_dict(i) for i in items], 
         "pagination": pagination
