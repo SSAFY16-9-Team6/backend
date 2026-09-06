@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import models
+import rag
 
 def list_categories(db: Session) -> List[models.Category]:
     return db.query(models.Category).all()
@@ -60,6 +61,11 @@ def create_post(db: Session, post_data: dict) -> models.Post:
     db.add(p)
     db.commit()
     db.refresh(p)
+    try:
+        if rag.client:
+            rag.upsert_embedding(db, "post", str(p.postId), rag.build_post_text(p))
+    except Exception:
+        pass
     return p
 
 def list_posts(db: Session, skip: int = 0, limit: int = 20) -> Tuple[int, List[models.Post]]:
@@ -93,9 +99,16 @@ def update_post(db: Session, post: models.Post, updates: dict) -> models.Post:
             setattr(post, k, v)
     db.commit()
     db.refresh(post)
+    if "title" in updates or "content" in updates:
+        try:
+            if rag.client:
+                rag.upsert_embedding(db, "post", str(post.postId), rag.build_post_text(post))
+        except Exception:
+            pass
     return post
 
 def delete_post(db: Session, post: models.Post):
+    rag.delete_embedding(db, "post", str(post.postId))
     db.delete(post)
     db.commit()
 
