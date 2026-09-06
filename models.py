@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint
 from database import Base
 import datetime
 
@@ -41,9 +41,24 @@ class LikeHistory(Base):
     post_id = Column(Integer, ForeignKey("posts.postId"))
     user_key = Column(String, nullable=False)
 
-# 5. 챗봇 로그 테이블 
+# 5. 챗봇 로그 테이블
 class ChatbotLog(Base):
     __tablename__ = "chatbot_logs"
     id = Column(Integer, primary_key=True, index=True)
     user_message = Column(Text)
     bot_reply = Column(Text)
+
+# 6. RAG 임베딩 테이블 (장소/게시글 텍스트를 벡터로 저장해두고 코사인 유사도로 검색)
+class Embedding(Base):
+    __tablename__ = "embeddings"
+    id = Column(Integer, primary_key=True, index=True)
+    entityType = Column(String, nullable=False)   # "place" | "post"
+    entityId = Column(String, nullable=False, index=True)
+    content = Column(Text, nullable=False)         # 임베딩을 생성한 원본 텍스트
+    vector = Column(Text, nullable=False)          # JSON으로 직렬화된 float 벡터
+    model = Column(String, nullable=False)
+    updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("entityType", "entityId", name="uq_embedding_entity"),
+    )

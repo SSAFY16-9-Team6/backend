@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
-import models, database, crud, schemas
+import models, database, crud, schemas, rag
+from constants import SIGNGU_NAMES
 
 load_dotenv()
 
@@ -38,18 +39,17 @@ def fail(message):
 def on_startup():
     database.Base.metadata.create_all(bind=database.engine)
 
-SIGNGU_NAMES = {
-    "110": "중구",
-    "140": "서구",
-    "170": "동구",
-    "200": "영도구",
-    "230": "부산진구",
-    "260": "동래구",
-    "290": "남구",
-    "320": "북구",
-    "350": "해운대구",
-    "380": "사하구",
-}
+    if rag.client:
+        db = database.SessionLocal()
+        try:
+            n_places = rag.sync_place_embeddings(db)
+            n_posts = rag.sync_post_embeddings(db)
+            if n_places or n_posts:
+                print(f"[RAG] 임베딩 동기화 완료: place {n_places}건, post {n_posts}건")
+        except Exception as e:
+            print(f"[RAG] 임베딩 동기화 실패: {e}")
+        finally:
+            db.close()
 
 #지역코드로 관광지 조회
 @app.get(API_PREFIX + "/regions/{code}")
@@ -286,29 +286,33 @@ client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
 def chatbot(req: schemas.ChatRequest, db: Session = Depends(get_db)):
     user_msg = req.message
     reply = "챗봇 API 키가 설정되지 않았습니다."
-    
+
     if client:
         try:
-            _, places = crud.search_places(db, keyword=user_msg, limit=3)
-            context = "\n".join([f"- {p.title} (주소: {p.address})" for p in places])
-            
+            # RAG: DB에 저장된 장소/게시글 임베딩과 사용자 질문의 코사인 유사도로 관련 자료를 검색
+            scored = rag.retrieve(db, user_msg, top_k=5)
+            context = rag.build_context(db, scored)
+
             system_prompt = (
-                "당신은 부산 관광 전문가입니다. 아래 [데이터]를 바탕으로 친절하게 답변하세요.\n"
-                f"[데이터]\n{context}"
+                "당신은 부산 여행 큐레이터 챗봇입니다. 아래 [참고 자료]는 사용자 질문과 의미적으로 "
+                "유사한 항목을 서비스 DB에서 검색한 결과입니다. 장소나 후기에 대한 사실은 반드시 "
+                "[참고 자료]에 근거해서만 답변하고, 자료에 없는 세부 정보는 추측하지 말고 모른다고 "
+                "답하세요. 일반적인 인사나 잡담에는 자연스럽게 응답해도 됩니다.\n\n"
+                f"[참고 자료]\n{context}"
             )
-            
+
             resp = client.chat.completions.create(
-                model="gpt-5-mini", 
+                model="gpt-5-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg}
-                ], 
+                ],
                 max_completion_tokens=3000
             )
             reply = resp.choices[0].message.content
         except Exception as e:
             reply = f"챗봇 오류 발생: {str(e)}"
-            
+
     crud.log_chat(db, user_msg, reply)
     return success({"reply": reply})
 

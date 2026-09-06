@@ -4,21 +4,11 @@ import os
 import glob
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import models
+import rag
+from constants import CONTENT_TYPE_NAMES
 from database import SessionLocal, Base, engine   # Base, engine 추가로 import
 
 Base.metadata.create_all(bind=engine)   # <- 이 줄 추가: 테이블 없으면 생성
-
-
-CONTENT_TYPE_NAMES = {
-    12: "관광지",
-    14: "문화시설",
-    15: "축제공연행사",
-    25: "여행코스",
-    28: "레포츠",
-    32: "숙박",
-    38: "쇼핑",
-    39: "음식점",
-}
 
 SEED_POSTS = [
     {"postId": 1, "categoryId": 12, "title": "이재용의 부산 여행 첫 방문 후기", "content": "안녕하세요, 삼성전자 이재용입니다. 유엔기념공원 다녀왔는데 정말 좋았어요. 다음엔 감천문화마을도 가보려구요.", "author": "익명", "password": "1696"},
@@ -114,6 +104,17 @@ def load_all(folder: str):
 
     for path in json_files:
         load_places(path)   # 기존 함수 그대로 재사용
+
+    if rag.client:
+        db = SessionLocal()
+        try:
+            n_places = rag.sync_place_embeddings(db)
+            n_posts = rag.sync_post_embeddings(db)
+            print(f"RAG 임베딩 생성: place {n_places}건, post {n_posts}건")
+        finally:
+            db.close()
+    else:
+        print("OPENAI_API_KEY가 설정되지 않아 임베딩 생성을 건너뜁니다. (.env 설정 후 python scripts/build_embeddings.py 실행)")
 
 if __name__ == '__main__':
     folder = sys.argv[1] if len(sys.argv) > 1 else 'data'
